@@ -76,7 +76,8 @@ export class DronePipelineProvider implements vscode.TreeDataProvider<DroneNode>
         const children = element.children;
 
 
-        //Triggers
+        // TODO Triggers
+
         //Steps
         const steps = children["steps"];
 
