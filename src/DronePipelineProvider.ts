@@ -1,98 +1,141 @@
 import * as vscode from 'vscode';
+import { parseAllDocuments, Document, ParsedNode } from 'yaml';
 import * as fs from 'fs';
-import * as path from 'path';
 
-export class DronePipelineProvider implements vscode.TreeDataProvider<Dependency> {
+const NODE_TYPE_PIPELINE = "NODE_TYPE_PIPELINE";
+const NODE_TYPE_STEPS = "NODE_TYPE_STEPS";
+const NODE_TYPE_STEP = "NODE_TYPE_STEP";
+const NODE_TYPE_LABEL = "NODE_TYPE_LABEL";
+const NODE_TYPE_COMMANDS = "NODE_TYPE_COMMANDS";
 
-    constructor(private workspaceRoot: string | undefined) {
+type NodeType = typeof NODE_TYPE_PIPELINE
+    | typeof NODE_TYPE_STEPS
+    | typeof NODE_TYPE_STEP
+    | typeof NODE_TYPE_LABEL
+    | typeof NODE_TYPE_COMMANDS;
+
+async function parseDroneFile(droneFilePath: string): Promise<Document.Parsed<ParsedNode>[] | undefined> {
+    try {
+        const droneFile = await fs.promises.readFile(droneFilePath, 'utf-8');
+        const pipeline = parseAllDocuments(droneFile);
+        return pipeline as Document.Parsed<ParsedNode>[]; // TODO: Handle the EmptyStream case.
+    } catch (err) {
+        vscode.window.showErrorMessage(`Failed to load ${droneFilePath}`);
+        console.error(err);
+        return undefined;
+    }
+}
+
+export class DronePipelineProvider implements vscode.TreeDataProvider<DroneNode> {
+
+    constructor(private droneFilePath: string) {
 
     }
 
-    onDidChangeTreeData?: vscode.Event<Dependency> | undefined;
+    onDidChangeTreeData?: vscode.Event<any> | undefined;
     refresh(): void {
 
         // this._onDidChangeTreeData.fire();
     }
-    getTreeItem(element: Dependency): vscode.TreeItem | Thenable<vscode.TreeItem> {
+    getTreeItem(element: any): vscode.TreeItem {
         return element;
     }
-    getChildren(element?: Dependency): Thenable<Dependency[]> {
-        if (!this.workspaceRoot) {
-            vscode.window.showInformationMessage('No dependencies in empty workspace');
-            return Promise.resolve([]);
+    getChildren(element?: DroneNode): Thenable<DroneNode[]> {
+        if (!element) {
+            return parseDroneFile(this.droneFilePath)
+                .then(dronePipeline => dronePipeline ? dronePipeline.map(d => {
+                    const asJson = d.contents?.toJSON();
+                    const kind = asJson["kind"];
+                    const prefix = kind ? `${kind}: ` : "";
+                    return new DroneNode(`${prefix}${asJson["name"]}`, vscode.TreeItemCollapsibleState.Collapsed, NODE_TYPE_PIPELINE, asJson);
+                })  : [] // falsy to empty list.
+                );
         }
 
-        if (element) {
-            return Promise.resolve(this.getDepsInPackageJson(path.join(this.workspaceRoot, 'node_modules', element.label, 'package.json')));
+        if (element.nodeType === NODE_TYPE_PIPELINE) {
+            return this.childrenOfPipeline(element);
         }
 
-        const packageJsonPath = path.join(this.workspaceRoot, 'package.json');
-
-        if (this.pathExists(packageJsonPath)) {
-            return Promise.resolve(this.getDepsInPackageJson(packageJsonPath));
+        if (element.nodeType === NODE_TYPE_STEPS) {
+            return this.pipelineSteps(element);
         }
 
-        vscode.window.showInformationMessage("Workspace has no package.json");
+        if (element.nodeType === NODE_TYPE_STEP) {
+            return this.pipelineStep(element);
+        }
+
+        if (element.nodeType === NODE_TYPE_COMMANDS) {
+            return this.commands(element);
+        }
+
         return Promise.resolve([]);
     }
 
-    private getDepsInPackageJson(packageJsonPath: string): Dependency[] {
-        const workspaceRoot = this.workspaceRoot;
-        if (this.pathExists(packageJsonPath) && workspaceRoot) {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-            const toDep = (moduleName: string, version: string): Dependency => {
-                if (this.pathExists(path.join(workspaceRoot, 'node_modules', moduleName))) {
-                    return new Dependency(moduleName, version, vscode.TreeItemCollapsibleState.Collapsed);
-                }
-                return new Dependency(moduleName, version, vscode.TreeItemCollapsibleState.None, {
-                    command: 'extension.openPackageOnNpm',
-                    title: '',
-                    arguments: [moduleName]
-                });
-            };
+    childrenOfPipeline(element: DroneNode): Thenable<DroneNode[]> {
+        const nodes = [] as DroneNode[];
+        const children = element.children;
 
-            const deps = packageJson.dependencies ?
-                Object.keys(packageJson.dependencies).map(dep => toDep(dep, packageJson.dependencies[dep]))
-                : [];
 
-            const devDeps = packageJson.devDependencies
-                ? Object.keys(packageJson.devDependencies).map(dep => toDep(dep, packageJson.devDependencies[dep]))
-                : [];
+        //Triggers
+        //Steps
+        const steps = children["steps"];
 
-            return deps.concat(devDeps);
-        }
+        nodes.push(
+            new DroneNode("steps", vscode.TreeItemCollapsibleState.Collapsed, NODE_TYPE_STEPS, steps)
+        );
 
-        return [];
+        return Promise.resolve(nodes);
     }
 
-    private pathExists(p: string): boolean {
-        try {
-            fs.accessSync(p); // COULD BE ASYNC
-        } catch (err) {
-            return false;
-        }
+    pipelineSteps(element: DroneNode): Thenable<DroneNode[]> {
+        const children = element.children;
 
-        return true;
+        return Promise.resolve(
+            children.map((step: any) => {
+                //TODO: Handle no name? Can drone allow that? Bad drone files do.
+                //TODO: Handle no image?
+                return new DroneNode(
+                    `${step["name"]}: ${step["image"]}`,
+                    vscode.TreeItemCollapsibleState.Collapsed,
+                    NODE_TYPE_STEP,
+                    {
+                        commands: step["commands"],
+                        dependsOn: step["depends_on"]
+                    }
+                );
+            }));
+    }
+
+    pipelineStep(element: DroneNode): Thenable<DroneNode[]> {
+        const commands = new DroneNode(
+            "commands",
+            vscode.TreeItemCollapsibleState.Expanded,
+            NODE_TYPE_COMMANDS,
+            element.children["commands"]
+        );
+
+        return Promise.resolve([commands]);
+    }
+
+    commands(element: DroneNode): Thenable<DroneNode[]> {
+        return Promise.resolve(
+            element.children.map((step: any) => new DroneNode(
+                step,
+                vscode.TreeItemCollapsibleState.None,
+                NODE_TYPE_LABEL,
+                step
+            ))
+        );
     }
 }
 
-export class Dependency extends vscode.TreeItem {
+class DroneNode extends vscode.TreeItem {
     constructor(
         public readonly label: string,
-        public readonly version: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly command?: vscode.Command
+        public readonly nodeType: NodeType,
+        public readonly children: any
     ) {
         super(label, collapsibleState);
-        this.tooltip = `${this.label}-${this.version}`;
-
-        this.description = this.version;
     }
-
-    iconPath = {
-		light: path.join(__filename, '..', '..', 'resources', 'light', 'dependency.svg'),
-		dark: path.join(__filename, '..', '..', 'resources', 'dark', 'dependency.svg')
-	};
-
-	contextValue = 'dependency';
 }

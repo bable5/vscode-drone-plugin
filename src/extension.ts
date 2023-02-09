@@ -1,28 +1,49 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { Dependency, DronePipelineProvider } from './DronePipelineProvider';
+import { DronePipelineProvider } from './DronePipelineProvider';
+import * as fs from 'fs';
+import * as path from 'path';
+
 
 const EXTENSION_NAME = 'drone-viewer.droneDependencies';
+
+function findDroneFile(rootPath?: string): string | undefined {
+	function traceDroneFilePath<A>(droneFile: A): A {
+		console.log(`Drone File Path: ${JSON.stringify(droneFile)}`);
+		return droneFile;
+	}
+
+	function pathExists(fsPath: string): string | undefined {
+		try {
+			fs.accessSync(fsPath);
+		} catch (err) {
+			return undefined;
+		}
+		return fsPath;
+	}
+
+	return traceDroneFilePath(
+		rootPath && (pathExists(path.join(rootPath, '.drone.yml')) || pathExists(path.join(rootPath, '.drone.yaml')))
+	);
+}
+
+
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	console.log(vscode.workspace.workspaceFolders);
-
 
 	const rootPath = (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0)
 		? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
 
-	const nodeDependenciesProvider = new DronePipelineProvider(rootPath);
+	const droneFilePath = findDroneFile(rootPath);
 
-	vscode.window.registerTreeDataProvider(`${EXTENSION_NAME}`, nodeDependenciesProvider);
-	vscode.commands.registerCommand(`${EXTENSION_NAME}.refreshEntry`, () => nodeDependenciesProvider.refresh());
-	vscode.commands.registerCommand('extension.openPackageOnNpm', moduleName => vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(`https://www.npmjs.com/package/${moduleName}`)));
-	vscode.commands.registerCommand(`${EXTENSION_NAME}.addEntry`, () => vscode.window.showInformationMessage('Successfully called add entry'));
-	vscode.commands.registerCommand(`${EXTENSION_NAME}.editEntry`,  (node: Dependency) => vscode.window.showInformationMessage(`Successfully called edit entry on ${node.label}.`));
-	vscode.commands.registerCommand(`${EXTENSION_NAME}.deleteEntry`, (node: Dependency) => vscode.window.showInformationMessage(`Successfully called delete entry on ${node.label}.`));
+	// TODO: Can we control activation, predicated on if .drone.y(a?)ml exists?
+	if (droneFilePath) {
+		const dronePipelineProvider = new DronePipelineProvider(droneFilePath);
 
+		vscode.window.registerTreeDataProvider(`${EXTENSION_NAME}`, dronePipelineProvider);
+		vscode.commands.registerCommand(`${EXTENSION_NAME}.refreshEntry`, () => dronePipelineProvider.refresh());
+	}
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated

@@ -24,23 +24,23 @@
   "contributes": {
     "commands": [],
     "viewsContainers": {
-			"activitybar": [
-				{
-					"id": "drone-pipeline-explorer",
-					"title": "Drone Pipeline Explorer",
-					"icon": "media/dep.svg"
-				}
-			]
-		},
-		"views": {
-			"drone-pipeline-explorer": [
-				{
-					"id": "drone-viewer.droneDependencies",
-					"name": "Drone Pipeline Explorer",
-					"icon": "media/dep.svg",
-					"contextualTitle": "Drone Pipeline Explorer"
-				}
-			]
+      "activitybar": [
+        {
+          "id": "drone-pipeline-explorer",
+          "title": "Drone Pipeline Explorer",
+          "icon": "media/dep.svg"
+        }
+      ]
+    },
+    "views": {
+      "drone-pipeline-explorer": [
+        {
+          "id": "drone-viewer.droneDependencies",
+          "name": "Drone Pipeline Explorer",
+          "icon": "media/dep.svg",
+          "contextualTitle": "Drone Pipeline Explorer"
+        }
+      ]
     }
   },
   "scripts": {
@@ -48,8 +48,9 @@
     "vscode:package": "vsce package",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
+    "fix-lint": "eslint src --ext ts --fix",
+    "pretest": "npm run compile && npm run lint",
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
@@ -65,5 +66,8 @@
     "glob": "^8.1.0",
     "mocha": "^10.1.0",
     "typescript": "^4.9.4"
+  },
+  "dependencies": {
+    "yaml": "^2.2.1"
   }
 }
