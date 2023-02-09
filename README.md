@@ -1,3 +1,3 @@
-# mooneyware-drone-viewer README
+# mooneyware-drone-viewer
 
-Navigating large yaml files is awful.
+Navigating large .drone.yaml files is awful.

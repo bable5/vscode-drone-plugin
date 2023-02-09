@@ -12,7 +12,7 @@
   "publisher": "MooneyWare",
   "license": "MIT",
   "repository": {
-    "url": "https://gitlab.com/bable5/drone-extension"
+    "url": "https://github.com/bable5/vscode-drone-plugin"
   },
   "categories": [
     "Other"
